@@ -1,95 +1,116 @@
 $CSVFile = "C:\AD_users.csv"
 $CSVData = Import-Csv -Path $CSVFile -Delimiter ";" -Encoding UTF8
 
-Foreach($Utilisateur in $CSVData){
+foreach ($User in $CSVData) {
+    $UserFirstName = $User.Prenom
+    $UserLastName = $User.Nom
+    $UserLogin = ($UserFirstName).Substring(0, 1) + "." + $UserLastName
+    $UserEmail = "$UserLogin@dinoland.lan"
+    $UserPassword = "Azerty1234$"
 
-    $UtilisateurPrenom = $Utilisateur.Prenom
-    $UtilisateurNom = $Utilisateur.Nom
-    $UtilisateurLogin = ($UtilisateurPrenom).Substring(0,1) + "." + $UtilisateurNom
-    $UtilisateurEmail = "$UtilisateurLogin@M2M.lan"
-    $UtilisateurMotDePasse = "Azerty1234$"
+    # Check if the user exists in AD
+    if (Get-ADUser -Filter {SamAccountName -eq $UserLogin}) {
+        Write-Warning "The login $UserLogin already exists in AD"
+    } else {
+        New-ADUser -Name "$UserLastName $UserFirstName" `
+                   -DisplayName "$UserLastName $UserFirstName" `
+                   -GivenName $UserFirstName `
+                   -Surname $UserLastName `
+                   -SamAccountName $UserLogin `
+                   -UserPrincipalName "$UserLogin@dinoland.lan" `
+                   -EmailAddress $UserEmail `
+                   -Path "OU=Users,DC=dinoland,DC=lan" `
+                   -AccountPassword (ConvertTo-SecureString $UserPassword -AsPlainText -Force) `
+                   -Enabled $true
 
-# Vérifier la présence de l'utilisateur dans l'AD
-
-if(Get-ADUser -Filter {SamAccountName -eq $UtilisateurLogin})
-{
-    Write-Warning "L'identifiant $UtilisateurLogin existe déjà dans l'AD"
-}
-else
-{
-    New-ADUser -Name "$UtilisateurNom $UtilisateurPrenom" `
-           -DisplayName "$UtilisateurNom $UtilisateurPrenom" `
-           -GivenName $UtilisateurPrenom `
-           -Surname $UtilisateurNom `
-           -SamAccountName $UtilisateurLogin `
-           -UserPrincipalName "$UtilisateurLogin@M2M.lan" `
-           -EmailAddress $UtilisateurEmail `
-           -Path "OU=Utilisateurs,DC=M2M,DC=LAN" `
-           -AccountPassword (ConvertTo-SecureString $UtilisateurMotDePasse -AsPlainText -Force) `
-           -Enabled $true
-
-Write-Output "Création de l'utilisateur : $UtilisateurLogin ($UtilisateurNom $UtilisateurPrenom)"
-
+        Write-Output "User created: $UserLogin ($UserLastName $UserFirstName)"
     }
+}
 
-} 
-
-# Importer le module Active Directory
+# Import the Active Directory module
 Import-Module ActiveDirectory
 
-# Créer l'OU "Techniciens"
-$NomOU = "Techniciens"
-$CheminOU = "DC=M2M,DC=LAN"
+# Define the base path for the OUs
+$BaseOUPath = "DC=dinoland,DC=lan"
 
-# Vérifier si l'OU existe déjà
-if (-not (Get-ADOrganizationalUnit -Filter {Name -eq $NomOU} -SearchBase $CheminOU)) {
-    New-ADOrganizationalUnit -Name $NomOU -Path $CheminOU
-    Write-Output "L'OU '$NomOU' a été créée dans '$CheminOU'."
+# Create the main OU "CORE"
+$CoreOUName = "CORE"
+$CoreOUPath = "OU=$CoreOUName,$BaseOUPath"
+
+if (-not (Get-ADOrganizationalUnit -Filter {Name -eq $CoreOUName} -SearchBase $BaseOUPath)) {
+    New-ADOrganizationalUnit -Name $CoreOUName -Path $BaseOUPath
+    Write-Output "The OU '$CoreOUName' has been created in '$BaseOUPath'."
 } else {
-    Write-Output "L'OU '$NomOU' existe déjà."
+    Write-Output "The OU '$CoreOUName' already exists."
 }
 
-# Définir les informations des utilisateurs à créer
-$Utilisateurs = @(
+# Create the "HUMANS" OU under "CORE"
+$HumansOUName = "HUMANS"
+$HumansOUPath = "OU=$HumansOUName,$CoreOUPath"
+
+if (-not (Get-ADOrganizationalUnit -Filter {Name -eq $HumansOUName} -SearchBase $CoreOUPath)) {
+    New-ADOrganizationalUnit -Name $HumansOUName -Path $CoreOUPath
+    Write-Output "The OU '$HumansOUName' has been created in '$CoreOUPath'."
+} else {
+    Write-Output "The OU '$HumansOUName' already exists."
+}
+
+# Create the "USERS" and "ADMIN" OUs under "HUMANS"
+$SubOUsToCreate = @("USERS", "ADMIN")
+
+foreach ($SubOUName in $SubOUsToCreate) {
+    $SubOUPath = "OU=$SubOUName,$HumansOUPath"
+
+    if (-not (Get-ADOrganizationalUnit -Filter {Name -eq $SubOUName} -SearchBase $HumansOUPath)) {
+        New-ADOrganizationalUnit -Name $SubOUName -Path $HumansOUPath
+        Write-Output "The OU '$SubOUName' has been created in '$HumansOUPath'."
+    } else {
+        Write-Output "The OU '$SubOUName' already exists."
+    }
+}
+
+
+# Define the users to be created
+$Users = @(
     @{
-        Prenom = "Alice"
-        Nom = "Dupont"
+        FirstName = "Alice"
+        LastName = "Dupont"
         Login = "a.dupont"
-        Email = "a.dupont@M2M.lan"
-        MotDePasse = "Azerty1234$"
+        Email = "a.dupont@dinoland.lan"
+        Password = "Azerty1234$"
     },
     @{
-        Prenom = "Bob"
-        Nom = "Martin"
+        FirstName = "Bob"
+        LastName = "Martin"
         Login = "b.martin"
-        Email = "b.martin@M2M.lan"
-        MotDePasse = "Azerty1234$"
+        Email = "b.martin@dinoland.lan"
+        Password = "Azerty1234$"
     }
 )
 
-# Ajouter les utilisateurs dans l'OU "Techniciens"
-foreach ($Utilisateur in $Utilisateurs) {
-    $UtilisateurNom = $Utilisateur.Nom
-    $UtilisateurPrenom = $Utilisateur.Prenom
-    $UtilisateurLogin = $Utilisateur.Login
-    $UtilisateurEmail = $Utilisateur.Email
-    $UtilisateurMotDePasse = $Utilisateur.MotDePasse
+# Add users to the "Technicians" OU
+foreach ($User in $Users) {
+    $UserLastName = $User.LastName
+    $UserFirstName = $User.FirstName
+    $UserLogin = $User.Login
+    $UserEmail = $User.Email
+    $UserPassword = $User.Password
 
-    # Vérifier la présence de l'utilisateur dans l'AD
-    if (-not (Get-ADUser -Filter {SamAccountName -eq $UtilisateurLogin})) {
-        New-ADUser -Name "$UtilisateurNom $UtilisateurPrenom" `
-                   -DisplayName "$UtilisateurNom $UtilisateurPrenom" `
-                   -GivenName $UtilisateurPrenom `
-                   -Surname $UtilisateurNom `
-                   -SamAccountName $UtilisateurLogin `
-                   -UserPrincipalName "$UtilisateurEmail" `
-                   -EmailAddress $UtilisateurEmail `
-                   -Path "OU=$NomOU,$CheminOU" `
-                   -AccountPassword (ConvertTo-SecureString $UtilisateurMotDePasse -AsPlainText -Force) `
+    # Check if the user exists in AD
+    if (-not (Get-ADUser -Filter {SamAccountName -eq $UserLogin})) {
+        New-ADUser -Name "$UserLastName $UserFirstName" `
+                   -DisplayName "$UserLastName $UserFirstName" `
+                   -GivenName $UserFirstName `
+                   -Surname $UserLastName `
+                   -SamAccountName $UserLogin `
+                   -UserPrincipalName "$UserEmail" `
+                   -EmailAddress $UserEmail `
+                   -Path "OU=$OUName,$OUPath" `
+                   -AccountPassword (ConvertTo-SecureString $UserPassword -AsPlainText -Force) `
                    -Enabled $true
 
-        Write-Output "Création de l'utilisateur : $UtilisateurLogin ($UtilisateurNom $UtilisateurPrenom)"
+        Write-Output "User created: $UserLogin ($UserLastName $UserFirstName)"
     } else {
-        Write-Warning "L'utilisateur $UtilisateurLogin existe déjà dans l'AD."
+        Write-Warning "The user $UserLogin already exists in AD."
     }
 }
