@@ -1,32 +1,6 @@
 $CSVFile = "C:\AD_users.csv"
 $CSVData = Import-Csv -Path $CSVFile -Delimiter ";" -Encoding UTF8
 
-foreach ($User in $CSVData) {
-    $UserFirstName = $User.Prenom
-    $UserLastName = $User.Nom
-    $UserLogin = ($UserFirstName).Substring(0, 1) + "." + $UserLastName
-    $UserEmail = "$UserLogin@dinoland.lan"
-    $UserPassword = "Azerty1234$"
-
-    # Check if the user exists in AD
-    if (Get-ADUser -Filter {SamAccountName -eq $UserLogin}) {
-        Write-Warning "The login $UserLogin already exists in AD"
-    } else {
-        New-ADUser -Name "$UserLastName $UserFirstName" `
-                   -DisplayName "$UserLastName $UserFirstName" `
-                   -GivenName $UserFirstName `
-                   -Surname $UserLastName `
-                   -SamAccountName $UserLogin `
-                   -UserPrincipalName "$UserLogin@dinoland.lan" `
-                   -EmailAddress $UserEmail `
-                   -Path "OU=Users,DC=dinoland,DC=lan" `
-                   -AccountPassword (ConvertTo-SecureString $UserPassword -AsPlainText -Force) `
-                   -Enabled $true
-
-        Write-Output "User created: $UserLogin ($UserLastName $UserFirstName)"
-    }
-}
-
 # Import the Active Directory module
 Import-Module ActiveDirectory
 
@@ -69,32 +43,23 @@ foreach ($SubOUName in $SubOUsToCreate) {
     }
 }
 
+# Process the CSV data to create users
+$UserCount = $CSVData.Count
 
-# Define the users to be created
-$Users = @(
-    @{
-        FirstName = "Alice"
-        LastName = "Dupont"
-        Login = "a.dupont"
-        Email = "a.dupont@dinoland.lan"
-        Password = "Azerty1234$"
-    },
-    @{
-        FirstName = "Bob"
-        LastName = "Martin"
-        Login = "b.martin"
-        Email = "b.martin@dinoland.lan"
-        Password = "Azerty1234$"
+for ($i = 0; $i -lt $UserCount; $i++) {
+    $User = $CSVData[$i]
+    $UserFirstName = $User.first_name
+    $UserLastName = $User.last_name
+    $UserLogin = ($UserFirstName).Substring(0, 1) + "." + $UserLastName
+    $UserEmail = "$UserLogin@dinoland.lan"
+    $UserPassword = $User.password
+
+    # Determine the OU path based on user index
+    if ($i -lt 200) {
+        $TargetOU = "OU=USERS,$HumansOUPath"
+    } else {
+        $TargetOU = "OU=ADMIN,$HumansOUPath"
     }
-)
-
-# Add users to the "Technicians" OU
-foreach ($User in $Users) {
-    $UserLastName = $User.LastName
-    $UserFirstName = $User.FirstName
-    $UserLogin = $User.Login
-    $UserEmail = $User.Email
-    $UserPassword = $User.Password
 
     # Check if the user exists in AD
     if (-not (Get-ADUser -Filter {SamAccountName -eq $UserLogin})) {
@@ -103,14 +68,14 @@ foreach ($User in $Users) {
                    -GivenName $UserFirstName `
                    -Surname $UserLastName `
                    -SamAccountName $UserLogin `
-                   -UserPrincipalName "$UserEmail" `
+                   -UserPrincipalName "$UserLogin@dinoland.lan" `
                    -EmailAddress $UserEmail `
-                   -Path "OU=$OUName,$OUPath" `
+                   -Path $TargetOU `
                    -AccountPassword (ConvertTo-SecureString $UserPassword -AsPlainText -Force) `
                    -Enabled $true
 
-        Write-Output "User created: $UserLogin ($UserLastName $UserFirstName)"
+        Write-Output "User created: $UserLogin ($UserLastName $UserFirstName) in $TargetOU"
     } else {
-        Write-Warning "The user $UserLogin already exists in AD."
+        Write-Warning "The login $UserLogin already exists in AD."
     }
 }
